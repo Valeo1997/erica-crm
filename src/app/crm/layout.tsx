@@ -1,3 +1,5 @@
+import SignOutButton from './SignOutButton';
+
 export default function CrmLayout({
   children,
 }: {
@@ -5,7 +7,10 @@ export default function CrmLayout({
 }) {
   return (
     <div>
-      <aside>{/* client-selector dropdown placeholder */}</aside>
+      <aside className="flex items-center justify-end gap-3 border-b border-neutral-200 px-4 py-2 dark:border-neutral-800">
+        {/* client-selector dropdown placeholder */}
+        <SignOutButton />
+      </aside>
       <main>{children}</main>
     </div>
   );
