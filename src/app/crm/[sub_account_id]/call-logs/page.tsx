@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, use, useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/client';
 import { Lead } from '@/lib/types';
 
 const EMERGENCY_STYLES: Record<string, string> = {

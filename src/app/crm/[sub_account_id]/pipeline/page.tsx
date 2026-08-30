@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase/client';
 import { Lead } from '@/lib/types';
 
 /* Columns are keyed strictly to the pipeline_stage enum values. */
