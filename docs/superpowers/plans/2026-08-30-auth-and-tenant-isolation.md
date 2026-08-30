@@ -37,7 +37,7 @@
 | `src/app/crm/[sub_account_id]/pipeline/page.tsx` | modify import path |
 | `src/app/crm/[sub_account_id]/call-logs/page.tsx` | modify import path |
 | `src/lib/supabase/middleware.ts` | **new** — session refresh + redirect logic |
-| `middleware.ts` | **new** (repo root) — Next.js middleware entrypoint |
+| `src/proxy.ts` | **new** — Next.js 16 proxy entrypoint (renamed from `middleware.ts`; must live next to `src/app`, not the repo root) |
 | `src/app/login/page.tsx` | **new** — email/password login form |
 | `src/app/crm/page.tsx` | **new** — admin "choose an account" list |
 | `src/app/crm/SignOutButton.tsx` | **new** — client component sign-out button |
@@ -135,14 +135,14 @@ git commit -m "Replace supabase-js client with @supabase/ssr browser client"
 
 **Files:**
 - Create: `src/lib/supabase/middleware.ts`
-- Create: `middleware.ts` (repo root, next to `package.json`)
+- Create: `src/proxy.ts`
 
 **Interfaces:**
 - Consumes: `process.env.NEXT_PUBLIC_SUPABASE_URL`,
   `process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY` (same env vars as Task 1).
 - Produces: `updateSession(request: NextRequest): Promise<NextResponse>`,
-  exported from `src/lib/supabase/middleware.ts`. Called by the root
-  `middleware.ts`; no other task depends on this function directly.
+  exported from `src/lib/supabase/middleware.ts`. Called by
+  `src/proxy.ts`; no other task depends on this function directly.
 
 - [ ] **Step 1: Create the session-refresh + redirect helper**
 
@@ -190,16 +190,21 @@ export async function updateSession(request: NextRequest) {
 }
 ```
 
-- [ ] **Step 2: Create the root middleware entrypoint**
+- [ ] **Step 2: Create the proxy entrypoint**
 
-Create `middleware.ts` at the repo root (same level as `package.json`,
-NOT inside `src/`):
+Next.js 16 renamed the `middleware.ts` file convention to `proxy.ts`
+(same behavior, new name — see
+`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`).
+It must live next to `src/app` (i.e. inside `src/`), not the repo root,
+since this project uses a `src/` directory.
+
+Create `src/proxy.ts`:
 
 ```ts
 import { type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   return updateSession(request);
 }
 
@@ -231,7 +236,7 @@ redirect fired).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add middleware.ts src/lib/supabase/middleware.ts
+git add src/proxy.ts src/lib/supabase/middleware.ts
 git commit -m "Add session-refresh middleware with /crm route protection"
 ```
 
