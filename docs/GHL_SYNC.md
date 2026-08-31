@@ -4,7 +4,10 @@ How GoHighLevel state flows into the mirror. GHL stays the system of record
 (`docs/ARCHITECTURE.md`); this design is one-way, read-only at the CRM end,
 and adds no write-back path.
 
-Status: **design only — nothing here is implemented.**
+Status: **partially implemented.** Transport is the n8n workflow in
+`integrations/n8n/` (setup runbook in its README); schema is migration
+`supabase/migrations/0002_ghl_sync.sql`. The voice stack already writes call
+data to Supabase through n8n (the "Main Flow"), matching §1.
 
 ## 1. The two-writer model (read this first)
 
@@ -44,21 +47,27 @@ Optional, add only if needed in practice:
 Nothing else. No notes, no tasks, no campaigns — the mirror needs stage
 truth, not GHL's whole event firehose.
 
-## 3. Delivery mechanism: workflow custom webhooks (for now)
+## 3. Delivery mechanism: GHL workflow webhooks → n8n (chosen)
 
-**Chosen:** GHL Workflow → *Custom Webhook* action POSTing to our endpoint.
+**Chosen:** GHL Workflow → *Custom Webhook* action POSTing to an **n8n cloud
+workflow** (`integrations/n8n/ghl-stage-sync.json`), which validates,
+normalizes, and upserts into Supabase.
 
-- No OAuth app, no marketplace review, works on the agency plan they have.
-- Each sub-account gets its own workflow (or one agency-level workflow where
-  the plan allows); the webhook body is hand-mapped in GHL's UI, so **we
-  control the payload shape exactly** — we ask for precisely the fields in §5.
-- A shared secret is added as a static header in the workflow action
-  (`X-Mirror-Key`), one per environment.
+Why n8n instead of a bespoke endpoint:
+
+- The business already runs its call automation in n8n cloud — same tool,
+  same credentials, and every execution is visible/replayable in the n8n UI.
+- No OAuth app, no marketplace review, no new infrastructure to deploy.
+- Each sub-account's GHL workflow POSTs a hand-mapped body, so **we control
+  the payload shape exactly** (§6). A shared secret travels as a static
+  header (`X-Mirror-Key`), one per environment.
 
 **Later (only if sub-account count grows painful):** a GHL marketplace app
 with event subscriptions (`OpportunityCreate`, `OpportunityStageChange`,
 `OpportunityStatusChange`) replaces per-account workflows with one install.
-Don't build this until ~10+ sub-accounts; it's ceremony before then.
+Don't build this until ~10+ sub-accounts; it's ceremony before then. A
+Supabase Edge Function (`ghl-ingest`) remains the fallback if n8n ever
+becomes the bottleneck — the design below is transport-agnostic.
 
 *Verify against the live account:* exact trigger names and available merge
 fields in the workflow builder; whether opportunity payloads carry contact
@@ -68,36 +77,40 @@ contact-fetch API call — prefer merge fields, fewer moving parts).
 
 ## 4. The endpoint
 
-One Supabase Edge Function: `ghl-ingest`.
+One n8n workflow (`integrations/n8n/ghl-stage-sync.json`): a Webhook trigger
+plus a single audited Code node that performs, in order:
 
 ```
-POST /functions/v1/ghl-ingest
+POST https://<n8n-host>/webhook/ghl-stage-sync
 Headers: X-Mirror-Key: <shared secret>
-Body: JSON, shape defined by us in the GHL workflow (§5)
+Body: JSON, shape defined by us in the GHL workflow (§6)
 ```
 
-Behavior, in order:
+1. Reject missing/invalid `X-Mirror-Key`. The key lives only in the n8n
+   workflow and the GHL action — never in the repo, never in the browser app
+   (RLS grants end users no INSERT; all writes use the **service role** key,
+   held server-side in n8n).
+2. Normalize the payload and compute a unique event key.
+3. Insert the raw payload into `ghl_events` (inbox, §5) with
+   `on_conflict=event_key` merge — duplicate deliveries collapse.
+   **This is the idempotency gate.**
+4. Look up the stage in `ghl_stage_map`; unmapped stages are skipped and
+   logged (with an alert-worthy execution record in n8n), never guessed.
+5. Ordering guard: apply only if the event's source timestamp is newer than
+   the row's `ghl_synced_at`; stale deliveries become no-ops.
+6. Upsert `plumbing_leads` per §6 — update stage only, or insert a stub row
+   if GHL knows an opportunity the voice stack never produced.
 
-1. Reject non-POST, missing/invalid `X-Mirror-Key` → 401. Constant-time
-   compare; key lives in edge-function secrets, never in the repo, never in
-   the browser app (RLS already grants end users no INSERT — all writes here
-   use the function's **service role**, server-side only).
-2. Map `locationId` → `sub_account_id` via `crm_sub_accounts`. Unknown
-   location → 200 + log-and-drop (don't error: an unmapped test location
-   shouldn't create retry storms).
-3. Insert the raw payload into `ghl_events` (inbox, §5) with a unique event
-   key. Duplicate key → 200, stop. **This is the idempotency gate.**
-4. Process inline (it's fast; no queue infra needed yet): upsert into
-   `plumbing_leads` per §6.
-5. Respond 200 regardless of processing outcome; failures mark the inbox row
-   `status = 'failed'` with the error — we retry from our side, GHL doesn't
-   have to.
-
-Respond fast, always 200 once the payload is safely in the inbox. GHL custom
-webhooks have no reliable retry contract, so the inbox *is* the reliability
-layer — plus the reconciliation backstop in §8.
+The webhook responds 200 on receipt (n8n `responseMode: onReceived`), so GHL
+never retries into our face; failures are n8n executions we can inspect and
+re-run — the inbox plus n8n's execution log *is* the reliability layer, with
+the reconciliation backstop in §8.
 
 ## 5. Schema additions
+
+Implemented as `supabase/migrations/0002_ghl_sync.sql` (idempotent; run it
+once in the SQL editor — see `integrations/n8n/README.md` step 1). For the
+record, the shape:
 
 ```sql
 -- Inbox: every webhook delivery, exactly once.
@@ -187,12 +200,12 @@ into the sync.
 
 ## 8. Backstop: nightly reconciliation
 
-Webhooks get missed. Once nightly (Supabase scheduled edge function), per
-active sub-account: pull open opportunities from the GHL API, compare
-`ghl_opportunity_id` + stage against `plumbing_leads`, and emit corrective
-events into the same inbox path (not direct writes — one code path for all
-mutations). This makes the system self-healing within 24h and turns
-"did the webhook fire?" into a non-incident.
+Webhooks get missed. Once nightly (an n8n scheduled workflow, same pattern
+as the sync), per active sub-account: pull open opportunities from the GHL
+API, compare `ghl_opportunity_id` + stage against `plumbing_leads`, and emit
+corrective events into the same inbox path (not direct writes — one code
+path for all mutations). This makes the system self-healing within 24h and
+turns "did the webhook fire?" into a non-incident.
 
 Rate: a handful of locations × one paged API call — trivial against GHL
 limits. Requires one GHL API key (private integration token) with

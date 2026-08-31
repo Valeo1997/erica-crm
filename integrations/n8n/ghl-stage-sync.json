@@ -1,0 +1,35 @@
+{
+  "name": "GHL → CRM Stage Sync (plumbing_leads)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ghl-stage-sync",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "wh-ghl-sync",
+      "name": "GHL Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// GHL -> CRM stage sync. GHL owns pipeline stage; this mirrors it into\n// plumbing_leads. Design: docs/GHL_SYNC.md.\n//\n// BEFORE ACTIVATING, replace the three placeholders below:\n//   SUPABASE_URL  = https://phtmarvmovozydxipmat.supabase.co  (the CRM project)\n//   SERVICE_KEY   = Supabase Dashboard -> Settings -> API Keys -> service_role (secret)\n//   MIRROR_KEY    = any long random string you invent; paste the SAME value as the\n//                   X-Mirror-Key header in the GHL workflow's Custom Webhook action.\n//\n// GHL-side setup (per sub-account): a Workflow with trigger \"Opportunity status\n// changed\" / \"Opportunity stage changed\" (exact names vary) -> action\n// \"Custom Webhook\" -> POST to this workflow's production URL, header\n// X-Mirror-Key: <MIRROR_KEY>, and the opportunity + contact merge fields in the body.\n\nconst SUPABASE_URL = 'PASTE_PROJECT_URL_HERE';\nconst SERVICE_KEY = 'PASTE_SERVICE_ROLE_KEY_HERE';\nconst MIRROR_KEY = 'PASTE_SHARED_SECRET_HERE';\n\nconst req = items[0].json;\nconst headersIn = req.headers ?? {};\nconst body = req.body ?? req;\n\n// --- 0. Authenticate the delivery -----------------------------------------\nif ((headersIn['x-mirror-key'] ?? '') !== MIRROR_KEY) {\n  throw new Error('Rejected: bad X-Mirror-Key.');\n}\n\nconst sbHeaders = (extra = {}) => ({\n  apikey: SERVICE_KEY,\n  Authorization: `Bearer ${SERVICE_KEY}`,\n  'Content-Type': 'application/json',\n  ...extra,\n});\n\n// --- 1. Normalize (field paths may need adjusting to your GHL workflow body) -\nconst opp = body.opportunity ?? body;\nconst contact = body.contact ?? {};\nconst locationId = body.locationId ?? body.location_id ?? opp.location_id;\nconst oppId = opp.id ?? body.opportunity_id;\nconst pipelineId = opp.pipeline_id ?? body.pipeline_id;\nconst stageId = opp.pipeline_stage_id ?? opp.stage_id ?? body.stage_id;\nconst status = String(opp.status ?? '').toLowerCase();\nconst eventType = body.event_type ?? 'opportunity.stage_changed';\nconst srcTs = body.updated_at ?? opp.date_updated ?? opp.updated_at ?? new Date().toISOString();\nconst fullName =\n  [contact.first_name, contact.last_name].filter(Boolean).join(' ') || body.contact_name || null;\nconst address =\n  [contact.address1, contact.city, contact.state, contact.postal_code].filter(Boolean).join(', ') ||\n  null;\n\nif (!locationId || !oppId) throw new Error('Payload missing locationId or opportunity id.');\n\nconst eventKey = [locationId, eventType, oppId, stageId || status, srcTs].join(':');\n\n// --- 2. Inbox: log every delivery, idempotently (audit + replay) -----------\nawait this.helpers.httpRequest({\n  method: 'POST',\n  url: `${SUPABASE_URL}/rest/v1/ghl_events?on_conflict=event_key`,\n  headers: sbHeaders({ Prefer: 'resolution=merge-duplicates,return=minimal' }),\n  body: { event_key: eventKey, location_id: locationId, event_type: eventType, payload: body },\n  json: true,\n});\n\n// --- 3. Map the GHL stage to the mirror stage (never guess from names) -----\nlet targetStage = null;\nlet subAccountId = null;\n\nif (pipelineId && stageId) {\n  const mapRows = await this.helpers.httpRequest({\n    method: 'GET',\n    url:\n      `${SUPABASE_URL}/rest/v1/ghl_stage_map` +\n      `?ghl_pipeline_id=eq.${encodeURIComponent(pipelineId)}` +\n      `&ghl_stage_id=eq.${encodeURIComponent(stageId)}` +\n      `&select=sub_account_id,pipeline_stage`,\n    headers: sbHeaders(),\n    json: true,\n  });\n  targetStage = mapRows?.[0]?.pipeline_stage ?? null;\n  subAccountId = mapRows?.[0]?.sub_account_id ?? null;\n}\n\n// Safety net per design doc §7: a 'won' opportunity is booked even if its\n// stage row is unmapped.\nif (!targetStage && status === 'won') targetStage = 'booked';\n\nif (!targetStage) {\n  return [{ json: { skipped: 'unmapped_stage', pipeline_id: pipelineId, stage_id: stageId, locationId } }];\n}\n\n// --- 4. Ordering guard: stale deliveries degrade to no-ops ------------------\nconst leads = await this.helpers.httpRequest({\n  method: 'GET',\n  url:\n    `${SUPABASE_URL}/rest/v1/plumbing_leads` +\n    `?ghl_opportunity_id=eq.${encodeURIComponent(oppId)}` +\n    `&select=lead_id,ghl_synced_at,pipeline_stage`,\n  headers: sbHeaders(),\n  json: true,\n});\nconst lead = leads?.[0];\nconst incomingMs = new Date(srcTs).getTime();\nconst currentMs = lead?.ghl_synced_at ? new Date(lead.ghl_synced_at).getTime() : 0;\nconst appliedAt = new Date(incomingMs).toISOString();\n\nif (lead && incomingMs <= currentMs) {\n  return [{ json: { skipped: 'stale_event', ghl_opportunity_id: oppId } }];\n}\n\n// --- 5. Apply: update stage only. Call-data columns are never touched ------\nif (lead) {\n  await this.helpers.httpRequest({\n    method: 'PATCH',\n    url: `${SUPABASE_URL}/rest/v1/plumbing_leads?ghl_opportunity_id=eq.${encodeURIComponent(oppId)}`,\n    headers: sbHeaders({ Prefer: 'return=minimal' }),\n    body: { pipeline_stage: targetStage, ghl_synced_at: appliedAt },\n    json: true,\n  });\n  return [{ json: { updated: oppId, pipeline_stage: targetStage } }];\n}\n\n// No matching call-created row: insert a stub so GHL truth is never dropped.\n// The linking heuristic (phone match) stays out of n8n — a human merges if\n// needed; a duplicate beats a wrong link (design doc §6).\nif (!subAccountId) {\n  return [{ json: { skipped: 'no_sub_account_mapping', locationId, ghl_opportunity_id: oppId } }];\n}\n\nawait this.helpers.httpRequest({\n  method: 'POST',\n  url: `${SUPABASE_URL}/rest/v1/plumbing_leads?on_conflict=ghl_opportunity_id`,\n  headers: sbHeaders({ Prefer: 'resolution=merge-duplicates,return=minimal' }),\n  body: {\n    ghl_opportunity_id: oppId,\n    sub_account_id: subAccountId,\n    customer_name: fullName ?? 'Unknown',\n    customer_phone: contact.phone ?? '',\n    customer_address: address ?? '',\n    plumbing_issue: '(created from GHL — no call data)',\n    emergency_level: 'standard',\n    pipeline_stage: targetStage,\n    call_id: null,\n    transcript: null,\n    ghl_synced_at: appliedAt,\n  },\n  json: true,\n});\n\nreturn [{ json: { inserted_stub: oppId, pipeline_stage: targetStage } }];\n"
+      },
+      "id": "code-sync-stage",
+      "name": "Validate + Sync Stage",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300]
+    }
+  ],
+  "connections": {
+    "GHL Webhook": {
+      "main": [[{ "node": "Validate + Sync Stage", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {}
+}

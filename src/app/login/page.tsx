@@ -1,8 +1,26 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, type FormEvent } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
+
+// Rendered when the auth callback bounces a bad/expired reset link back here.
+// useSearchParams must sit inside a Suspense boundary (see below) for
+// prerendering to work.
+function ResetLinkError() {
+  const searchParams = useSearchParams();
+
+  if (searchParams.get('error') !== 'reset-link-invalid') {
+    return null;
+  }
+
+  return (
+    <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-400 ring-1 ring-inset ring-red-500/30">
+      That password reset link was invalid or expired. Request a new one.
+    </p>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -78,6 +96,10 @@ export default function LoginPage() {
           </p>
         )}
 
+        <Suspense fallback={null}>
+          <ResetLinkError />
+        </Suspense>
+
         <div>
           <label
             htmlFor="email"
@@ -119,6 +141,13 @@ export default function LoginPage() {
         >
           {isSubmitting ? 'Signing in…' : 'Sign in'}
         </button>
+
+        <Link
+          href="/forgot-password"
+          className="block text-center text-sm text-ash transition-colors hover:text-cream"
+        >
+          Forgot password?
+        </Link>
       </form>
     </div>
   );
