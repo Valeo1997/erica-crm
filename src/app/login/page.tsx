@@ -49,17 +49,31 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-50 dark:bg-neutral-950">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-ink px-4">
+      <div
+        className="ember-glow pointer-events-none absolute inset-0"
+        aria-hidden="true"
+      />
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 rounded-xl border border-neutral-200 bg-white p-8 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+        className="relative w-full max-w-sm space-y-4 rounded-2xl border border-seam bg-coal p-8 shadow-2xl shadow-black/50"
       >
-        <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">
-          Log in
-        </h1>
+        <div className="mb-6">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-ember">
+            Ericka · AI Dispatcher
+          </p>
+          <h1 className="mt-3 font-display text-4xl uppercase leading-[0.95] tracking-tight text-cream">
+            Command
+            <br />
+            Center
+          </h1>
+          <p className="mt-3 text-sm text-fog">
+            Sign in to see what Ericka handled overnight.
+          </p>
+        </div>
 
         {error && (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
+          <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-400 ring-1 ring-inset ring-red-500/30">
             {error}
           </p>
         )}
@@ -67,7 +81,7 @@ export default function LoginPage() {
         <div>
           <label
             htmlFor="email"
-            className="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
+            className="mb-1 block text-sm font-medium text-fog"
           >
             Email
           </label>
@@ -77,14 +91,14 @@ export default function LoginPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+            className="w-full rounded-lg border border-seam bg-ink px-3 py-2 text-sm text-cream placeholder:text-ash focus:border-ember focus:outline-none focus:ring-2 focus:ring-ember/20"
           />
         </div>
 
         <div>
           <label
             htmlFor="password"
-            className="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-300"
+            className="mb-1 block text-sm font-medium text-fog"
           >
             Password
           </label>
@@ -94,16 +108,16 @@ export default function LoginPage() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+            className="w-full rounded-lg border border-seam bg-ink px-3 py-2 text-sm text-cream placeholder:text-ash focus:border-ember focus:outline-none focus:ring-2 focus:ring-ember/20"
           />
         </div>
 
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-neutral-700 disabled:opacity-50 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-200"
+          className="w-full rounded-lg bg-ember px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-flare disabled:opacity-50"
         >
-          {isSubmitting ? 'Logging in…' : 'Log in'}
+          {isSubmitting ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
     </div>

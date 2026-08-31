@@ -5,15 +5,12 @@ import { supabase } from '@/lib/supabase/client';
 import { Lead } from '@/lib/types';
 
 const EMERGENCY_STYLES: Record<string, string> = {
-  emergency:
-    'bg-red-100 text-red-700 ring-red-600/20 dark:bg-red-500/10 dark:text-red-400 dark:ring-red-500/30',
-  urgent:
-    'bg-amber-100 text-amber-800 ring-amber-600/20 dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-500/30',
-  routine:
-    'bg-emerald-100 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/30',
+  emergency: 'bg-red-500/15 text-red-400 ring-red-500/40',
+  urgent: 'bg-ember/15 text-ember ring-ember/40',
+  routine: 'bg-soot text-fog ring-seam',
+  standard: 'bg-soot text-fog ring-seam',
 };
-const EMERGENCY_FALLBACK =
-  'bg-neutral-100 text-neutral-600 ring-neutral-500/20 dark:bg-neutral-500/10 dark:text-neutral-400 dark:ring-neutral-500/30';
+const EMERGENCY_FALLBACK = 'bg-soot text-fog ring-seam';
 
 function EmergencyBadge({ level }: { level: Lead['emergency_level'] }) {
   const classes = EMERGENCY_STYLES[level.toLowerCase()] ?? EMERGENCY_FALLBACK;
@@ -97,19 +94,19 @@ export default function CallLogsPage({
   }, [leads, query]);
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
+    <div className="min-h-full">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Page header */}
         <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-50">
+            <h1 className="font-display text-3xl uppercase leading-none tracking-tight text-cream sm:text-4xl">
               Call Logs
             </h1>
-            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+            <p className="mt-2 text-sm text-fog">
               Every call answered by the AI receptionist, newest first.
             </p>
           </div>
-          <span className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs font-medium text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+          <span className="rounded-full border border-seam bg-coal px-3 py-1 text-xs font-medium text-fog">
             Account <span className="font-mono">{sub_account_id}</span>
           </span>
         </header>
@@ -121,7 +118,7 @@ export default function CallLogsPage({
             fill="none"
             stroke="currentColor"
             strokeWidth={1.5}
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ash"
             aria-hidden="true"
           >
             <path
@@ -136,38 +133,40 @@ export default function CallLogsPage({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search name, phone, address, or issue…"
             aria-label="Search call logs"
-            className="w-full rounded-lg border border-neutral-200 bg-white py-2.5 pl-10 pr-4 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+            className="w-full rounded-lg border border-seam bg-coal py-2.5 pl-10 pr-4 text-sm text-cream placeholder:text-ash focus:border-ember focus:outline-none focus:ring-2 focus:ring-ember/20"
           />
         </div>
 
-        <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
+        <p className="mb-3 text-xs text-ash">
           Showing{' '}
-          <span className="font-semibold tabular-nums">
+          <span className="font-semibold tabular-nums text-fog">
             {filteredLeads.length}
           </span>{' '}
           of{' '}
-          <span className="font-semibold tabular-nums">{leads.length}</span>{' '}
+          <span className="font-semibold tabular-nums text-fog">
+            {leads.length}
+          </span>{' '}
           calls
         </p>
 
         {isLoading && (
-          <p className="rounded-xl border border-dashed border-neutral-300 px-4 py-14 text-center text-sm text-neutral-400 dark:border-neutral-700 dark:text-neutral-500">
+          <p className="rounded-xl border border-dashed border-seam px-4 py-14 text-center text-sm text-fog">
             Loading call logs…
           </p>
         )}
 
         {!isLoading && leads.length === 0 && (
-          <p className="rounded-xl border border-dashed border-neutral-300 px-4 py-14 text-center text-sm text-neutral-400 dark:border-neutral-700 dark:text-neutral-500">
+          <p className="rounded-xl border border-dashed border-seam px-4 py-14 text-center text-sm text-fog">
             No calls yet for this account.
           </p>
         )}
 
         {/* Table */}
         {!isLoading && leads.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-          <table className="min-w-full divide-y divide-neutral-200 dark:divide-neutral-800">
+        <div className="overflow-x-auto rounded-xl border border-seam bg-coal">
+          <table className="min-w-full divide-y divide-seam">
             <thead>
-              <tr className="text-left text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+              <tr className="text-left text-[11px] font-semibold uppercase tracking-[0.15em] text-ash">
                 <th scope="col" className="px-4 py-3 sm:px-6">
                   Customer
                 </th>
@@ -185,9 +184,11 @@ export default function CallLogsPage({
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+            <tbody className="divide-y divide-seam">
               {filteredLeads.map((lead) => {
                 const isExpanded = expandedId === lead.lead_id;
+                const isEmergency =
+                  lead.emergency_level.toLowerCase() === 'emergency';
                 return (
                   <Fragment key={lead.lead_id}>
                     <tr
@@ -196,26 +197,28 @@ export default function CallLogsPage({
                           cur === lead.lead_id ? null : lead.lead_id
                         )
                       }
-                      className="cursor-pointer transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
+                      className={`cursor-pointer transition-colors hover:bg-soot/60 ${
+                        isEmergency ? 'bg-red-500/[0.05]' : ''
+                      }`}
                     >
                       <td className="px-4 py-4 sm:px-6">
-                        <p className="font-semibold text-neutral-900 dark:text-neutral-50">
+                        <p className="font-semibold text-cream">
                           {lead.customer_name}
                         </p>
-                        <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                        <p className="mt-0.5 text-xs text-fog">
                           {lead.customer_address}
                         </p>
-                        <p className="mt-1 max-w-xs truncate text-xs text-neutral-400 dark:text-neutral-500">
+                        <p className="mt-1 max-w-xs truncate text-xs text-ash">
                           {lead.plumbing_issue}
                         </p>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-4 align-top font-mono text-sm text-neutral-700 dark:text-neutral-300 sm:px-6">
+                      <td className="whitespace-nowrap px-4 py-4 align-top font-mono text-sm text-fog sm:px-6">
                         {lead.customer_phone}
                       </td>
                       <td className="px-4 py-4 align-top sm:px-6">
                         <EmergencyBadge level={lead.emergency_level} />
                       </td>
-                      <td className="whitespace-nowrap px-4 py-4 align-top text-sm text-neutral-600 dark:text-neutral-300 sm:px-6">
+                      <td className="whitespace-nowrap px-4 py-4 align-top text-sm text-fog sm:px-6">
                         {formatTimestamp(lead.created_at)}
                       </td>
                       <td className="px-4 py-4 align-top text-right sm:px-6">
@@ -229,7 +232,7 @@ export default function CallLogsPage({
                               cur === lead.lead_id ? null : lead.lead_id
                             );
                           }}
-                          className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+                          className="rounded-md p-1 text-ash transition-colors hover:bg-soot hover:text-cream"
                         >
                           <svg
                             viewBox="0 0 24 24"
@@ -251,20 +254,20 @@ export default function CallLogsPage({
                       </td>
                     </tr>
                     {isExpanded && (
-                      <tr className="bg-neutral-50/70 dark:bg-neutral-800/30">
-                        <td colSpan={5} className="px-4 py-5 sm:px-6">
-                          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                      <tr className="bg-soot/40">
+                        <td colSpan={5} className="px-4 py-6 sm:px-8">
+                          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-ember">
                             Transcript ·{' '}
-                            <span className="font-mono normal-case">
+                            <span className="font-mono normal-case tracking-normal text-ash">
                               {lead.call_id}
                             </span>
                           </p>
                           {lead.transcript ? (
-                            <p className="max-w-3xl whitespace-pre-line text-sm leading-relaxed text-neutral-700 dark:text-neutral-300">
+                            <p className="max-w-2xl whitespace-pre-line text-[15px] leading-7 text-cream/90">
                               {lead.transcript}
                             </p>
                           ) : (
-                            <p className="text-sm italic text-neutral-400 dark:text-neutral-500">
+                            <p className="text-sm italic text-ash">
                               No transcript recorded for this call.
                             </p>
                           )}
@@ -278,13 +281,11 @@ export default function CallLogsPage({
                 <tr>
                   <td
                     colSpan={5}
-                    className="px-6 py-14 text-center text-sm text-neutral-400 dark:text-neutral-500"
+                    className="px-6 py-14 text-center text-sm text-fog"
                   >
                     No calls match{' '}
-                    <span className="font-medium text-neutral-600 dark:text-neutral-300">
-                      {query}
-                    </span>
-                    . Try a different name, phone number, or address.
+                    <span className="font-medium text-cream">{query}</span>. Try
+                    a different name, phone number, or address.
                   </td>
                 </tr>
               )}
