@@ -129,7 +129,7 @@ create table public.ghl_events (
 
 -- Stage mapping: GHL stage IDs are per-pipeline, per-account, and renamable.
 create table public.ghl_stage_map (
-  sub_account_id  text not null references public.crm_sub_accounts(sub_account_id),
+  sub_account_id  uuid not null references public.crm_sub_accounts(sub_account_id),
   ghl_pipeline_id text not null,
   ghl_stage_id    text not null,
   pipeline_stage  text not null check (pipeline_stage in ('incoming','active','booked')),

@@ -36,7 +36,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ghl_events_event_key_key
 -- GHL stage IDs are per-pipeline, per-account, and renamable — never infer
 -- the mirror stage from a stage name, always from this map.
 CREATE TABLE IF NOT EXISTS public.ghl_stage_map (
-  sub_account_id  text NOT NULL REFERENCES public.crm_sub_accounts (sub_account_id),
+  sub_account_id  uuid NOT NULL REFERENCES public.crm_sub_accounts (sub_account_id),
   ghl_pipeline_id text NOT NULL,
   ghl_stage_id    text NOT NULL,
   pipeline_stage  text NOT NULL CHECK (pipeline_stage IN ('incoming', 'active', 'booked')),
