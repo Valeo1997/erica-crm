@@ -136,10 +136,10 @@ create table public.ghl_stage_map (
   primary key (ghl_pipeline_id, ghl_stage_id)
 );
 
--- Link key.
+-- Link key. Full unique index (no WHERE): PostgREST upserts can't match
+-- partial indexes; multiple NULLs are allowed regardless.
 create unique index plumbing_leads_ghl_opportunity_id_key
-  on public.plumbing_leads (ghl_opportunity_id)
-  where ghl_opportunity_id is not null;
+  on public.plumbing_leads (ghl_opportunity_id);
 ```
 
 `event_key`: `location_id : event_type : ghl_opportunity_id :
