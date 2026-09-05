@@ -28,14 +28,15 @@ const MONTHS = [
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
 
-/* Deterministic UTC formatting so server and client render identically. */
+/* Local-time formatting. Timestamps only render after the client-side
+   fetch, so there's no server/client mismatch to guard against. */
 function formatTimestamp(iso: string) {
   const d = new Date(iso);
-  const hours = d.getUTCHours();
-  const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+  const hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
   const ampm = hours >= 12 ? 'PM' : 'AM';
   const hour12 = hours % 12 || 12;
-  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()} · ${hour12}:${minutes} ${ampm} UTC`;
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} · ${hour12}:${minutes} ${ampm}`;
 }
 
 export default function CallLogsPage({
