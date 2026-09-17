@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, use, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { Lead } from '@/lib/types';
 
@@ -272,6 +273,26 @@ export default function CallLogsPage({
                               No transcript recorded for this call.
                             </p>
                           )}
+                          <Link
+                            href={`/crm/${sub_account_id}/leads/${lead.lead_id}`}
+                            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-ember transition-colors hover:text-flare"
+                          >
+                            View lead
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth={1.5}
+                              className="h-4 w-4"
+                              aria-hidden="true"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                              />
+                            </svg>
+                          </Link>
                         </td>
                       </tr>
                     )}

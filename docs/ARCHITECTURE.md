@@ -65,5 +65,14 @@ GHL's marketing page. When in doubt, ask what actually gets opened.
   requires reconciling two data models: this repo currently has one
   `plumbing_leads` table with three stages (`incoming` / `active` / `booked`),
   and no contacts or companies tables at all.
+- **Write paths (as of 2026-09-15):** app pages write client→Supabase under RLS
+  (contacts, companies — full CRUD; `plumbing_leads` — update only). Booking
+  tables (`appointments`, `booking_slots`) stay read-only for client logins —
+  all availability writes flow through n8n's service role. The single exception
+  is `public.cancel_appointment(uuid)`: a SECURITY DEFINER RPC granted to
+  `authenticated` that verifies the caller's tenant membership (or admin claim)
+  before delegating to the service-role-locked `release_slot`. Never ship the
+  service key to the browser to work around this — add a tenant-checked RPC
+  instead, following that function as the template.
 
 Supersedes: Product_Architecture_Clarification, 2026-08-30.

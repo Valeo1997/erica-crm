@@ -7,6 +7,8 @@ human setup — the code is done. Work through top to bottom.
 |---|---|---|---|
 | Call feed | `ericka-call-feed-crm.json` | ElevenLabs → Supabase | Every answered call becomes a `plumbing_leads` row |
 | Stage sync | `ghl-stage-sync.json` | GHL → Supabase | Pipeline stage changes in GHL mirror into the CRM |
+| Booking tools | `booking-tools.json` | ElevenLabs → Supabase | Mid-call check / book / cancel against `booking_slots` |
+| Nightly slots | `booking-nightly-ensure-slots.json` | n8n cron → Supabase | Keeps a rolling 21-day window horizon per tenant |
 
 ## 1. Database first (one time)
 
@@ -86,7 +88,32 @@ In the GHL sub-account, create/edit a Workflow:
 3. **Idempotency:** refire either webhook (n8n → Executions → re-run) → no
    duplicate rows, stage unchanged.
 
-## 7. Password-reset emails (one time, finishes the auth flow)
+## 7. Booking workflows (migration 0005 first)
+
+Design: `docs/BOOKING.md`. Apply `supabase/migrations/0005_booking_slots.sql`
+in the SQL editor before importing these two.
+
+**`booking-nightly-ensure-slots.json`** — schedule trigger → Code node that
+calls `ensure_slots` for every tenant. After import, **verify the schedule**
+in the trigger node (03:17 nightly; re-save the cron if the import doesn't
+map it). Activate it — without it, `book_slot` starts returning
+"window full or missing" once the seeded horizon runs out.
+
+**`booking-tools.json`** — webhook (`/webhook/ericka-booking-tools`,
+response mode "last node" so Ericka gets the result synchronously mid-call).
+Same placeholder convention (`PASTE_PROJECT_URL_HERE`,
+`PASTE_SERVICE_ROLE_KEY_HERE`, `PASTE_SHARED_SECRET_HERE`); use the same
+MIRROR_KEY as the stage sync. In ElevenLabs, configure the agent's tool as a
+webhook POSTing to the production URL with header
+`X-Mirror-Key: <MIRROR_KEY>` and JSON body:
+
+- `{"action":"check","sub_account_id":"...","days":7}` → `{open:[{date,window,spots}]}`
+- `{"action":"book","sub_account_id":"...","slot_date":"YYYY-MM-DD","window":"morning","customer_name":"...","customer_phone":"...","lead_id":"..."}` → `{booked:true,appointment_id}` or `{booked:false,reason:"window_full_or_missing"}`
+- `{"action":"cancel","sub_account_id":"...","appointment_id":"..."}` → `{cancelled:true}`
+
+Ericka must only offer windows returned by `check`.
+
+## 8. Password-reset emails (one time, finishes the auth flow)
 
 Supabase dashboard → **Authentication → URL Configuration**:
 

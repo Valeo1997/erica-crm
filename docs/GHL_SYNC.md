@@ -191,11 +191,18 @@ merge beats a wrong link.
 
 ## 7. Terminal statuses
 
-`won` → `pipeline_stage = 'booked'` (safety net; normally a stage change
+**Enum update (2026-09-10):** `pipeline_stage` is no longer the mirror
+triple. Per the ARCHITECTURE.md pivot (2026-09-05) the CRM owns the stage
+and the enum is the five CRM stages — `'new_lead' | 'contacted' |
+'qualified' | 'proposal_sent' | 'closed_won'`. `ghl_stage_map` targets these
+values (see `supabase/seeds/` for the live mapping); old rows were migrated
+by `0004` (incoming → new_lead, active → contacted, booked → closed_won).
+
+`won` → `pipeline_stage = 'closed_won'` (safety net; normally a stage change
 already did it). `lost` / `abandoned` → out of scope for v1: keep showing
 the last stage (the enum has no lost state and the UI contract doesn't
 change). If "where did lost leads go" becomes a real question, that's a
-product decision — a fourth stage or a filter — not something to smuggle
+product decision — another stage or a filter — not something to smuggle
 into the sync.
 
 ## 8. Backstop: nightly reconciliation
