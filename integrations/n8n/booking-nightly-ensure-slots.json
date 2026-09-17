@@ -1,0 +1,39 @@
+{
+  "name": "Booking — Nightly ensure_slots (all tenants)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "17 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-nightly",
+      "name": "Nightly 03:17",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Nightly: keep every tenant's booking horizon provisioned (docs/BOOKING.md).\n// Calls public.ensure_slots(sub_account_id, 21) for each crm_sub_accounts row,\n// keeping a rolling 21 days of morning/midday/late_afternoon windows.\n// ensure_slots is idempotent (ON CONFLICT DO NOTHING) — re-runs are free.\n//\n// BEFORE ACTIVATING, replace the two placeholders below:\n//   SUPABASE_URL  = https://phtmarvmovozydxipmat.supabase.co  (the CRM project)\n//   SERVICE_KEY   = Supabase Dashboard -> Settings -> API Keys -> service_role (secret)\n\nconst SUPABASE_URL = 'PASTE_PROJECT_URL_HERE';\nconst SERVICE_KEY = 'PASTE_SERVICE_ROLE_KEY_HERE';\n\nconst sbHeaders = (extra = {}) => ({\n  apikey: SERVICE_KEY,\n  Authorization: `Bearer ${SERVICE_KEY}`,\n  'Content-Type': 'application/json',\n  ...extra,\n});\n\nconst tenants = await this.helpers.httpRequest({\n  method: 'GET',\n  url: `${SUPABASE_URL}/rest/v1/crm_sub_accounts?select=sub_account_id`,\n  headers: sbHeaders(),\n  json: true,\n});\n\nconst ensured = [];\nfor (const t of tenants ?? []) {\n  await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${SUPABASE_URL}/rest/v1/rpc/ensure_slots`,\n    headers: sbHeaders(),\n    body: { p_sub_account_id: t.sub_account_id, p_days_ahead: 21 },\n    json: true,\n  });\n  ensured.push(t.sub_account_id);\n}\n\nreturn [{ json: { ensured: ensured.length, tenants: ensured } }];\n"
+      },
+      "id": "code-ensure-slots",
+      "name": "ensure_slots For All Tenants",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300]
+    }
+  ],
+  "connections": {
+    "Nightly 03:17": {
+      "main": [[{ "node": "ensure_slots For All Tenants", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {}
+}

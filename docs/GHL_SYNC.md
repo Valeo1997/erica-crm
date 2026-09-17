@@ -129,17 +129,17 @@ create table public.ghl_events (
 
 -- Stage mapping: GHL stage IDs are per-pipeline, per-account, and renamable.
 create table public.ghl_stage_map (
-  sub_account_id  text not null references public.crm_sub_accounts(sub_account_id),
+  sub_account_id  uuid not null references public.crm_sub_accounts(sub_account_id),
   ghl_pipeline_id text not null,
   ghl_stage_id    text not null,
   pipeline_stage  text not null check (pipeline_stage in ('incoming','active','booked')),
   primary key (ghl_pipeline_id, ghl_stage_id)
 );
 
--- Link key.
+-- Link key. Full unique index (no WHERE): PostgREST upserts can't match
+-- partial indexes; multiple NULLs are allowed regardless.
 create unique index plumbing_leads_ghl_opportunity_id_key
-  on public.plumbing_leads (ghl_opportunity_id)
-  where ghl_opportunity_id is not null;
+  on public.plumbing_leads (ghl_opportunity_id);
 ```
 
 `event_key`: `location_id : event_type : ghl_opportunity_id :
@@ -191,11 +191,18 @@ merge beats a wrong link.
 
 ## 7. Terminal statuses
 
-`won` → `pipeline_stage = 'booked'` (safety net; normally a stage change
+**Enum update (2026-09-10):** `pipeline_stage` is no longer the mirror
+triple. Per the ARCHITECTURE.md pivot (2026-09-05) the CRM owns the stage
+and the enum is the five CRM stages — `'new_lead' | 'contacted' |
+'qualified' | 'proposal_sent' | 'closed_won'`. `ghl_stage_map` targets these
+values (see `supabase/seeds/` for the live mapping); old rows were migrated
+by `0004` (incoming → new_lead, active → contacted, booked → closed_won).
+
+`won` → `pipeline_stage = 'closed_won'` (safety net; normally a stage change
 already did it). `lost` / `abandoned` → out of scope for v1: keep showing
 the last stage (the enum has no lost state and the UI contract doesn't
 change). If "where did lost leads go" becomes a real question, that's a
-product decision — a fourth stage or a filter — not something to smuggle
+product decision — another stage or a filter — not something to smuggle
 into the sync.
 
 ## 8. Backstop: nightly reconciliation

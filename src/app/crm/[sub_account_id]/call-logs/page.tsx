@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, use, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { Lead } from '@/lib/types';
 
@@ -28,14 +29,15 @@ const MONTHS = [
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
 
-/* Deterministic UTC formatting so server and client render identically. */
+/* Local-time formatting. Timestamps only render after the client-side
+   fetch, so there's no server/client mismatch to guard against. */
 function formatTimestamp(iso: string) {
   const d = new Date(iso);
-  const hours = d.getUTCHours();
-  const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+  const hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
   const ampm = hours >= 12 ? 'PM' : 'AM';
   const hour12 = hours % 12 || 12;
-  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()} · ${hour12}:${minutes} ${ampm} UTC`;
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} · ${hour12}:${minutes} ${ampm}`;
 }
 
 export default function CallLogsPage({
@@ -271,6 +273,26 @@ export default function CallLogsPage({
                               No transcript recorded for this call.
                             </p>
                           )}
+                          <Link
+                            href={`/crm/${sub_account_id}/leads/${lead.lead_id}`}
+                            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-ember transition-colors hover:text-flare"
+                          >
+                            View lead
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth={1.5}
+                              className="h-4 w-4"
+                              aria-hidden="true"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                              />
+                            </svg>
+                          </Link>
                         </td>
                       </tr>
                     )}
