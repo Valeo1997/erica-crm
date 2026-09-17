@@ -8,4 +8,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-Product context: read docs/ARCHITECTURE.md before any design or architecture decision. The CRM is a temporary GHL mirror, not the product and not a GHL replacement.
+Product context: read docs/ARCHITECTURE.md before any design or architecture decision. As of 2026-09-05 this CRM is being built into a full GoHighLevel replacement and the system of record — a multi-tenant SaaS with client sub-account logins. This reverses the earlier "temporary GHL mirror" model; do not reinstate it.

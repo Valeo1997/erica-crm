@@ -1,0 +1,35 @@
+{
+  "name": "Ericka — Booking Tools (check / book / cancel)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ericka-booking-tools",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "wh-booking-tools",
+      "name": "ElevenLabs Tool Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Ericka booking tools: ElevenLabs mid-call tool webhook -> booking RPCs.\n// Design: docs/BOOKING.md.\n//\n// BEFORE ACTIVATING, replace the three placeholders below:\n//   SUPABASE_URL  = https://phtmarvmovozydxipmat.supabase.co  (the CRM project)\n//   SERVICE_KEY   = Supabase Dashboard -> Settings -> API Keys -> service_role (secret)\n//   MIRROR_KEY    = same shared-secret convention as ghl-stage-sync; configure the\n//                   ElevenLabs tool to send it as the X-Mirror-Key header.\n//\n// Response mode is \"last node\" on purpose: Ericka reads this JSON synchronously\n// mid-call and only offers windows that come back in `open`.\n//\n// Body (JSON): { action, sub_account_id, ... }\n//   action=check  -> { slot_date? (default: today, Phoenix), days? (default 7) }\n//   action=book   -> { slot_date, window, customer_name, customer_phone?, lead_id? }\n//   action=cancel -> { appointment_id }\n\nconst SUPABASE_URL = 'PASTE_PROJECT_URL_HERE';\nconst SERVICE_KEY = 'PASTE_SERVICE_ROLE_KEY_HERE';\nconst MIRROR_KEY = 'PASTE_SHARED_SECRET_HERE';\n\nconst req = items[0].json;\nconst headersIn = req.headers ?? {};\nconst body = req.body ?? req;\n\nif ((headersIn['x-mirror-key'] ?? '') !== MIRROR_KEY) {\n  throw new Error('Rejected: bad X-Mirror-Key.');\n}\n\nconst sbHeaders = (extra = {}) => ({\n  apikey: SERVICE_KEY,\n  Authorization: `Bearer ${SERVICE_KEY}`,\n  'Content-Type': 'application/json',\n  ...extra,\n});\n\n// One timezone: America/Phoenix (no DST). All dates are plain YYYY-MM-DD.\nconst phoenixToday = () =>\n  new Date().toLocaleDateString('en-CA', { timeZone: 'America/Phoenix' });\nconst addDays = (iso, n) => {\n  const [y, m, d] = iso.split('-').map(Number);\n  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);\n};\n\nconst action = String(body.action ?? '').toLowerCase();\nconst subAccountId = body.sub_account_id;\nif (!subAccountId) throw new Error('Missing sub_account_id.');\n\nif (action === 'check') {\n  const from = body.slot_date ?? phoenixToday();\n  const days = Math.min(Math.max(parseInt(body.days ?? '7', 10) || 7, 1), 30);\n  const rows = await this.helpers.httpRequest({\n    method: 'GET',\n    url:\n      `${SUPABASE_URL}/rest/v1/booking_slots` +\n      `?sub_account_id=eq.${encodeURIComponent(subAccountId)}` +\n      `&slot_date=gte.${from}&slot_date=lte.${addDays(from, days)}` +\n      `&order=slot_date.asc&select=slot_date,window,capacity,booked_count`,\n    headers: sbHeaders(),\n    json: true,\n  });\n  const open = (rows ?? [])\n    .filter((r) => r.booked_count < r.capacity)\n    .map((r) => ({ date: r.slot_date, window: r.window, spots: r.capacity - r.booked_count }));\n  return [{ json: { open } }];\n}\n\nif (action === 'book') {\n  // book_slot returns the new appointment_id, or NULL when the window filled\n  // (or was never provisioned) between the check and this call.\n  const appointmentId = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${SUPABASE_URL}/rest/v1/rpc/book_slot`,\n    headers: sbHeaders(),\n    body: {\n      p_sub_account_id: subAccountId,\n      p_slot_date: body.slot_date,\n      p_window: body.window,\n      p_customer_name: body.customer_name ?? 'Unknown caller',\n      p_customer_phone: body.customer_phone ?? '',\n      p_lead_id: body.lead_id ?? null,\n    },\n    json: true,\n  });\n  if (!appointmentId) {\n    return [{\n      json: {\n        booked: false,\n        reason: 'window_full_or_missing',\n        slot_date: body.slot_date,\n        window: body.window,\n      },\n    }];\n  }\n  return [{ json: { booked: true, appointment_id: appointmentId, slot_date: body.slot_date, window: body.window } }];\n}\n\nif (action === 'cancel') {\n  const cancelled = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${SUPABASE_URL}/rest/v1/rpc/release_slot`,\n    headers: sbHeaders(),\n    body: { p_appointment_id: body.appointment_id },\n    json: true,\n  });\n  return [{ json: { cancelled: cancelled === true } }];\n}\n\nthrow new Error(`Unknown action: ${action}`);\n"
+      },
+      "id": "code-booking-tools",
+      "name": "Route Booking Action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300]
+    }
+  ],
+  "connections": {
+    "ElevenLabs Tool Webhook": {
+      "main": [[{ "node": "Route Booking Action", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {}
+}
