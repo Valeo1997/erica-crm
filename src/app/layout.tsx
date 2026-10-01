@@ -16,7 +16,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: 'Ericka — Command Center',
-  description: 'Live mirror of your GoHighLevel pipeline and AI-answered calls.',
+  description: 'Your AI dispatcher command center — leads, bookings, and calls in one place.',
 };
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
