@@ -48,7 +48,7 @@ export default function CrmAccountPickerPage() {
           Choose an account
         </h1>
         <p className="mt-2 text-sm text-fog">
-          Each account mirrors a GoHighLevel sub-account.
+          Select an account to continue.
         </p>
 
         <div className="mt-8">

@@ -39,7 +39,7 @@ export default function CrmLayout({
 
         <div className="border-t border-seam px-4 py-3">
           <p className="text-[11px] leading-snug text-ash">
-            Read-only mirror. GoHighLevel is the system of record.
+            Ericka&rsquo;s Desk &mdash; your system of record.
           </p>
         </div>
       </aside>
