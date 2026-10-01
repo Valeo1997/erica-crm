@@ -12,7 +12,8 @@ const WINDOWS: { id: BookingSlot['window']; label: string }[] = [
   { id: 'late_afternoon', label: 'Late afternoon' },
 ];
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -24,7 +25,12 @@ function toISODate(d: Date): string {
 
 function dayLabel(iso: string): string {
   const d = new Date(`${iso}T12:00:00`);
-  return `${WEEKDAYS[d.getDay()]} ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  return `${WEEKDAYS_SHORT[d.getDay()]} ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+}
+
+function dayLabelLong(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`);
+  return `${WEEKDAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
 const EMERGENCY_STYLES: Record<string, string> = {
@@ -133,13 +139,14 @@ export default function BookingsPage({
   const [leadEmergency, setLeadEmergency] = useState<Map<string, string>>(new Map());
   const [setupError, setSetupError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedISO, setSelectedISO] = useState<string | null>(null);
 
   /* Pure fetch — no setState, shared between the mount effect and the
      post-cancel revalidate (same pattern as the contacts page). */
   const fetchRecords = useCallback(async () => {
     const today = new Date();
     const end = new Date();
-    end.setDate(end.getDate() + 7);
+    end.setDate(end.getDate() + 6);
 
     const empty = {
       slots: [] as BookingSlot[],
@@ -223,47 +230,23 @@ export default function BookingsPage({
     setLeadEmergency(result.emergencies);
   };
 
-  const slotById = useMemo(
-    () => new Map(slots.map((s) => [s.slot_id, s])),
-    [slots]
-  );
+  /* Appointments grouped by the slot they belong to. */
+  const appointmentsBySlot = useMemo(() => {
+    const map = new Map<string, Appointment[]>();
+    for (const a of appointments) {
+      const list = map.get(a.slot_id);
+      if (list) list.push(a);
+      else map.set(a.slot_id, [a]);
+    }
+    return map;
+  }, [appointments]);
 
   const todayISO = toISODate(new Date());
 
-  const todaysAppointments = useMemo(
-    () =>
-      appointments
-        .filter((a) => slotById.get(a.slot_id)?.slot_date === todayISO)
-        .sort((a, b) => {
-          const wa = WINDOWS.findIndex((w) => w.id === slotById.get(a.slot_id)?.window);
-          const wb = WINDOWS.findIndex((w) => w.id === slotById.get(b.slot_id)?.window);
-          return wa - wb;
-        }),
-    [appointments, slotById, todayISO]
-  );
-
-  const upcomingAppointments = useMemo(
-    () =>
-      appointments
-        .filter((a) => {
-          const date = slotById.get(a.slot_id)?.slot_date;
-          return date !== undefined && date > todayISO;
-        })
-        .sort((a, b) => {
-          const sa = slotById.get(a.slot_id);
-          const sb = slotById.get(b.slot_id);
-          const byDate = (sa?.slot_date ?? '').localeCompare(sb?.slot_date ?? '');
-          if (byDate !== 0) return byDate;
-          const wa = WINDOWS.findIndex((w) => w.id === sa?.window);
-          const wb = WINDOWS.findIndex((w) => w.id === sb?.window);
-          return wa - wb;
-        }),
-    [appointments, slotById, todayISO]
-  );
-
-  const upcomingDays = useMemo(() => {
+  /* Today through +6 = a 7-day window, each day carrying its configured slots. */
+  const weekDays = useMemo(() => {
     const days: { iso: string; slots: BookingSlot[] }[] = [];
-    for (let i = 1; i <= 7; i++) {
+    for (let i = 0; i <= 6; i++) {
       const d = new Date();
       d.setDate(d.getDate() + i);
       const iso = toISODate(d);
@@ -277,17 +260,32 @@ export default function BookingsPage({
     return days;
   }, [slots]);
 
+  const selectedDay = useMemo(
+    () => (selectedISO ? weekDays.find((d) => d.iso === selectedISO) ?? null : null),
+    [selectedISO, weekDays]
+  );
+
+  /* Close the detail modal on Escape. */
+  useEffect(() => {
+    if (!selectedISO) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedISO(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedISO]);
+
   return (
     <div className="min-h-full">
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Page header */}
-        <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <header className="mb-8 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="font-display text-3xl uppercase leading-none tracking-tight text-cream sm:text-4xl">
               Bookings
             </h1>
             <p className="mt-2 text-sm text-fog">
-              Who the AI receptionist booked, and what&apos;s still open.
+              The next 7 days — tap any day to see windows and who&apos;s booked.
             </p>
           </div>
           <span className="rounded-full border border-seam bg-coal px-3 py-1 text-xs font-medium text-fog">
@@ -308,173 +306,203 @@ export default function BookingsPage({
         )}
 
         {!isLoading && !setupError && (
-          <>
-            {/* Today */}
-            <section className="rounded-xl border border-seam bg-coal">
-              <div className="flex items-center justify-between border-b border-seam px-4 py-3">
-                <h2 className="text-xs font-semibold uppercase tracking-[0.15em] text-ember">
-                  Today · {dayLabel(todayISO)}
-                </h2>
-                <span className="rounded-full bg-soot px-2 py-0.5 text-xs font-medium tabular-nums text-fog">
-                  {todaysAppointments.length} booked
-                </span>
-              </div>
-              {todaysAppointments.length === 0 ? (
-                <p className="px-4 py-10 text-center text-sm text-fog">
-                  Nothing booked today.
-                </p>
-              ) : (
-                <ul className="divide-y divide-seam">
-                  {todaysAppointments.map((a) => {
-                    const slot = slotById.get(a.slot_id);
-                    const window = WINDOWS.find((w) => w.id === slot?.window);
-                    const emergency = a.lead_id ? leadEmergency.get(a.lead_id) : undefined;
-                    return (
-                      <li key={a.appointment_id} className="flex items-center gap-3 px-4 py-3.5">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-cream">
-                            {a.lead_id ? (
-                              <Link
-                                href={`/crm/${sub_account_id}/leads/${a.lead_id}`}
-                                className="transition-colors hover:text-ember"
-                              >
-                                {a.customer_name}
-                              </Link>
-                            ) : (
-                              a.customer_name
-                            )}
-                          </p>
-                          {a.customer_phone && (
-                            <p className="mt-0.5 font-mono text-xs text-fog">
-                              {a.customer_phone}
-                            </p>
-                          )}
-                        </div>
-                        {window && (
-                          <span className="shrink-0 rounded-full bg-ember/10 px-2.5 py-1 text-xs font-medium text-ember">
-                            {window.label}
+          weekDays.every((d) => d.slots.length === 0) ? (
+            <p className="rounded-xl border border-dashed border-seam px-4 py-14 text-center text-sm text-fog">
+              No booking windows configured yet.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {weekDays.map((day) => {
+                const isToday = day.iso === todayISO;
+                const booked = day.slots.reduce((n, s) => n + s.booked_count, 0);
+                const capacity = day.slots.reduce((n, s) => n + s.capacity, 0);
+                return (
+                  <button
+                    key={day.iso}
+                    type="button"
+                    onClick={() => setSelectedISO(day.iso)}
+                    className="group flex flex-col rounded-2xl border border-seam bg-coal p-6 text-left transition-colors hover:border-ember/50 hover:bg-coal/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-ember/60"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        {isToday && (
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ember">
+                            Today
                           </span>
                         )}
-                        {emergency && <EmergencyBadge level={emergency} />}
-                        <CancelAppointmentButton
-                          appointmentId={a.appointment_id}
-                          onCancelled={reload}
-                        />
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-
-            {/* Upcoming bookings */}
-            <h2 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-[0.15em] text-fog">
-              Upcoming bookings
-            </h2>
-            {upcomingAppointments.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-seam px-4 py-10 text-center text-sm text-fog">
-                Nothing booked past today.
-              </p>
-            ) : (
-              <ul className="divide-y divide-seam rounded-xl border border-seam bg-coal">
-                {upcomingAppointments.map((a) => {
-                  const slot = slotById.get(a.slot_id);
-                  const window = WINDOWS.find((w) => w.id === slot?.window);
-                  const emergency = a.lead_id ? leadEmergency.get(a.lead_id) : undefined;
-                  return (
-                    <li key={a.appointment_id} className="flex items-center gap-3 px-4 py-3.5">
-                      <div className="w-36 shrink-0">
-                        <p className="text-sm font-semibold text-cream">
-                          {slot ? dayLabel(slot.slot_date) : 'Unknown date'}
-                        </p>
-                        {window && <p className="mt-0.5 text-xs text-fog">{window.label}</p>}
+                        <h3 className="font-display text-xl uppercase leading-tight tracking-tight text-cream">
+                          {dayLabel(day.iso)}
+                        </h3>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-cream">
-                          {a.lead_id ? (
-                            <Link
-                              href={`/crm/${sub_account_id}/leads/${a.lead_id}`}
-                              className="transition-colors hover:text-ember"
-                            >
-                              {a.customer_name}
-                            </Link>
-                          ) : (
-                            a.customer_name
-                          )}
-                        </p>
-                        {a.customer_phone && (
-                          <p className="mt-0.5 font-mono text-xs text-fog">{a.customer_phone}</p>
-                        )}
-                      </div>
-                      {emergency && <EmergencyBadge level={emergency} />}
-                      <CancelAppointmentButton
-                        appointmentId={a.appointment_id}
-                        onCancelled={reload}
-                      />
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-
-            {/* Next 7 days */}
-            <h2 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-[0.15em] text-fog">
-              Next 7 days
-            </h2>
-            {upcomingDays.every((d) => d.slots.length === 0) ? (
-              <p className="rounded-xl border border-dashed border-seam px-4 py-14 text-center text-sm text-fog">
-                No booking windows configured yet.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {upcomingDays.map((day) => (
-                  <section
-                    key={day.iso}
-                    className="rounded-xl border border-seam bg-coal"
-                  >
-                    <div className="border-b border-seam px-4 py-3">
-                      <h3 className="text-sm font-semibold text-cream">{dayLabel(day.iso)}</h3>
+                      <span className="shrink-0 rounded-full bg-soot px-2.5 py-1 text-xs font-semibold tabular-nums text-fog">
+                        {booked}/{capacity}
+                      </span>
                     </div>
-                    <div className="space-y-3 p-4">
-                      {day.slots.length === 0 && (
-                        <p className="text-xs text-ash">No windows</p>
-                      )}
-                      {day.slots.map((slot) => {
-                        const window = WINDOWS.find((w) => w.id === slot.window);
-                        const isFull = slot.booked_count >= slot.capacity;
-                        const pct = Math.min(
-                          100,
-                          slot.capacity > 0 ? (slot.booked_count / slot.capacity) * 100 : 0
-                        );
-                        return (
-                          <div key={slot.slot_id} className="flex items-center gap-3">
-                            <span className="w-24 shrink-0 text-xs text-fog">
-                              {window?.label ?? slot.window}
-                            </span>
-                            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-soot">
+
+                    <div className="mt-5 flex-1 space-y-3.5">
+                      {day.slots.length === 0 ? (
+                        <p className="text-xs text-ash">No windows configured</p>
+                      ) : (
+                        day.slots.map((slot) => {
+                          const window = WINDOWS.find((w) => w.id === slot.window);
+                          const isFull = slot.booked_count >= slot.capacity;
+                          const pct = Math.min(
+                            100,
+                            slot.capacity > 0 ? (slot.booked_count / slot.capacity) * 100 : 0
+                          );
+                          return (
+                            <div key={slot.slot_id} className="flex items-center gap-3">
+                              <span className="w-24 shrink-0 text-xs text-fog">
+                                {window?.label ?? slot.window}
+                              </span>
+                              <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-soot">
+                                <span
+                                  className={`block h-full rounded-full ${isFull ? 'bg-flare' : 'bg-ember'}`}
+                                  style={{ width: `${Math.max(pct, slot.booked_count > 0 ? 6 : 0)}%` }}
+                                />
+                              </span>
                               <span
-                                className={`block h-full rounded-full ${isFull ? 'bg-flare' : 'bg-ember'}`}
-                                style={{ width: `${Math.max(pct, slot.booked_count > 0 ? 4 : 0)}%` }}
-                              />
-                            </span>
-                            <span
-                              className={`w-10 shrink-0 text-right text-xs font-semibold tabular-nums ${
-                                isFull ? 'text-flare' : 'text-fog'
-                              }`}
-                            >
-                              {slot.booked_count}/{slot.capacity}
-                            </span>
-                          </div>
-                        );
-                      })}
+                                className={`w-10 shrink-0 text-right text-xs font-semibold tabular-nums ${
+                                  isFull ? 'text-flare' : 'text-fog'
+                                }`}
+                              >
+                                {slot.booked_count}/{slot.capacity}
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
-                  </section>
-                ))}
-              </div>
-            )}
-          </>
+
+                    <span className="mt-5 inline-flex items-center gap-1 text-xs font-medium text-fog transition-colors group-hover:text-ember">
+                      {booked > 0 ? `${booked} booked` : 'All open'}
+                      <span aria-hidden className="transition-transform group-hover:translate-x-0.5">
+                        →
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )
         )}
       </div>
+
+      {/* Day detail modal */}
+      {selectedDay && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Bookings for ${dayLabelLong(selectedDay.iso)}`}
+        >
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setSelectedISO(null)}
+          />
+          <div className="relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-seam bg-coal shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-seam px-6 py-4">
+              <div>
+                {selectedDay.iso === todayISO && (
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-ember">
+                    Today
+                  </span>
+                )}
+                <h2 className="font-display text-2xl uppercase leading-tight tracking-tight text-cream">
+                  {dayLabelLong(selectedDay.iso)}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedISO(null)}
+                className="shrink-0 rounded-lg p-1.5 text-fog transition-colors hover:bg-soot hover:text-cream"
+                aria-label="Close"
+              >
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
+                  <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {selectedDay.slots.length === 0 ? (
+                <p className="py-10 text-center text-sm text-fog">
+                  No booking windows configured for this day.
+                </p>
+              ) : (
+                <div className="space-y-6">
+                  {WINDOWS.map((w) => {
+                    const slot = selectedDay.slots.find((s) => s.window === w.id);
+                    if (!slot) return null;
+                    const appts = appointmentsBySlot.get(slot.slot_id) ?? [];
+                    const isFull = slot.booked_count >= slot.capacity;
+                    return (
+                      <section key={w.id}>
+                        <div className="mb-2.5 flex items-center justify-between">
+                          <h3 className="text-xs font-semibold uppercase tracking-[0.15em] text-ember">
+                            {w.label}
+                          </h3>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums ${
+                              isFull ? 'bg-flare/15 text-flare' : 'bg-soot text-fog'
+                            }`}
+                          >
+                            {slot.booked_count}/{slot.capacity} {isFull ? 'full' : 'booked'}
+                          </span>
+                        </div>
+                        {appts.length === 0 ? (
+                          <p className="rounded-lg border border-dashed border-seam px-3 py-3 text-xs text-ash">
+                            No bookings yet — {slot.capacity} open.
+                          </p>
+                        ) : (
+                          <ul className="divide-y divide-seam rounded-lg border border-seam">
+                            {appts.map((a) => {
+                              const emergency = a.lead_id
+                                ? leadEmergency.get(a.lead_id)
+                                : undefined;
+                              return (
+                                <li
+                                  key={a.appointment_id}
+                                  className="flex items-center gap-3 px-3 py-3"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-semibold text-cream">
+                                      {a.lead_id ? (
+                                        <Link
+                                          href={`/crm/${sub_account_id}/leads/${a.lead_id}`}
+                                          className="transition-colors hover:text-ember"
+                                        >
+                                          {a.customer_name}
+                                        </Link>
+                                      ) : (
+                                        a.customer_name
+                                      )}
+                                    </p>
+                                    {a.customer_phone && (
+                                      <p className="mt-0.5 font-mono text-xs text-fog">
+                                        {a.customer_phone}
+                                      </p>
+                                    )}
+                                  </div>
+                                  {emergency && <EmergencyBadge level={emergency} />}
+                                  <CancelAppointmentButton
+                                    appointmentId={a.appointment_id}
+                                    onCancelled={reload}
+                                  />
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
