@@ -5,18 +5,46 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Never run two deploys at once; a newer push waits for the current one.
+concurrency:
+  group: deploy-crm
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Install SSH key
+      - name: Install SSH key and pinned host key
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_KNOWN_HOSTS" ]; then
+            echo "DEPLOY_KNOWN_HOSTS secret is empty; refusing to trust an unpinned host key." >&2
+            exit 1
+          fi
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H 188.245.192.204 >> ~/.ssh/known_hosts
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
 
-      - name: Deploy on crm box
-        run: ssh -i ~/.ssh/deploy_key root@188.245.192.204
+      - name: Pull and restart the CRM containers
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=yes \
+            -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -euo pipefail
+             cd '$DEPLOY_PATH'
+             git fetch --prune origin main
+             git reset --hard origin/main
+             docker compose up -d --build --remove-orphans
+             docker image prune -f"
