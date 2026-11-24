@@ -214,11 +214,6 @@ const Navigation = React.memo(() => {
                 Sign in
               </Button>
             </Link>
-            <Link href="/signup">
-              <Button type="button" variant="default" size="sm">
-                Sign Up
-              </Button>
-            </Link>
           </div>
 
           <button
@@ -249,11 +244,6 @@ const Navigation = React.memo(() => {
               <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
                 <Button type="button" variant="ghost" size="sm" className="w-full">
                   Sign in
-                </Button>
-              </Link>
-              <Link href="/signup" onClick={() => setMobileMenuOpen(false)}>
-                <Button type="button" variant="default" size="sm" className="w-full">
-                  Sign Up
                 </Button>
               </Link>
             </div>

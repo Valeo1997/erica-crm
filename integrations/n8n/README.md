@@ -113,16 +113,45 @@ webhook POSTing to the production URL with header
 
 Ericka must only offer windows returned by `check`.
 
+Since Nov 2026 the tool also:
+
+- hides today's windows once fewer than 60 minutes remain before they close
+  (window hours live in `WINDOW_HOURS` at the top of the Code node);
+- returns the existing booking instead of booking twice when the same caller
+  asks for the same window again (`already_booked: true`), so a retried tool
+  call can't double-book;
+- prefers the phone system's caller ID over what the agent heard. Add
+  `"caller_id": "{{system__caller_id}}"` and
+  `"called_number": "{{system__called_number}}"` to the tool body in
+  ElevenLabs, and fill `TENANT_BY_CALLED_NUMBER` so the dialed number, not
+  the agent, decides which business the call books into.
+
+**`ericka-call-feed-crm.json`** now verifies ElevenLabs' webhook signature.
+Paste the post-call webhook secret from ElevenLabs into `WEBHOOK_SECRET`, and
+set `NODE_FUNCTION_ALLOW_BUILTIN=crypto` on the n8n container. Until the
+secret is pasted the check is skipped, exactly as before.
+
+**`website-lead-capture.json`** — webhook (`/webhook/website-lead`) that the
+demo and fit-check forms on the marketing sites post to. It writes a
+`new_lead` row into the Ericka AI tenant. Fill the three placeholders, then
+activate. CORS is limited to the ericka-ai.com sites.
+
 ## 8. Password-reset emails (one time, finishes the auth flow)
 
 Supabase dashboard → **Authentication → URL Configuration**:
 
-- Site URL: `https://erica-crm-rose.vercel.app`
+- Site URL: `https://app.ericka-ai.com`
 - Redirect URLs — add:
-  - `https://erica-crm-rose.vercel.app/auth/callback`
+  - `https://app.ericka-ai.com/auth/callback`
   - `http://localhost:3000/auth/callback` (for local testing)
 
 Without this, reset links in the forgot-password email land on an error page.
+(The CRM moved off Vercel in Nov 2026; if the Site URL still says
+erica-crm-rose.vercel.app, reset links go to the old, dead app.)
+
+While you're on the Authentication screens: turn **off** "Allow new users to
+sign up" (Authentication → Sign In / Providers). Logins are created by an
+admin; the public signup page was removed from the CRM.
 
 ## What is deliberately NOT here
 
