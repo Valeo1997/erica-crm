@@ -1,0 +1,53 @@
+{
+  "name": "Website lead capture",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "website-lead",
+        "responseMode": "lastNode",
+        "options": {
+          "allowedOrigins": "https://ericka-ai.com,https://www.ericka-ai.com,https://plumbers.ericka-ai.com"
+        }
+      },
+      "name": "Website Form Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "website-lead"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Website lead capture: demo/fit-check forms on the marketing sites -> a lead\n// in the Ericka AI sales pipeline (plumbing_leads, stage new_lead).\n//\n// BEFORE ACTIVATING, replace the placeholders below:\n//   SUPABASE_URL      = https://phtmarvmovozydxipmat.supabase.co\n//   SERVICE_KEY       = service_role key (prefer an n8n credential; never export it)\n//   SALES_ACCOUNT_ID  = sub_account_id of the \"Ericka AI\" tenant (your own pipeline)\n//\n// The forms post JSON from the browser, so the webhook node allows the two\n// marketing origins (CORS). Spam guard: a hidden \"website\" field (honeypot)\n// must be empty, and name + phone or email are required.\n\nconst SUPABASE_URL = 'PASTE_PROJECT_URL_HERE';\nconst SERVICE_KEY = 'PASTE_SERVICE_ROLE_KEY_HERE';\nconst SALES_ACCOUNT_ID = 'PASTE_ERICKA_AI_SUB_ACCOUNT_ID';\n\nconst b = items[0].json.body ?? items[0].json;\nconst clean = (v, max = 500) => String(v ?? '').trim().slice(0, max);\n\nif (clean(b.website)) {\n  // Bots fill every field. Pretend success so they don't retry.\n  return [{ json: { ok: true } }];\n}\n\nconst name = clean(b.name, 120);\nconst phone = clean(b.phone, 40);\nconst email = clean(b.email, 200);\nif (!name || (!phone && !email)) {\n  throw new Error('Missing name and a way to reach them.');\n}\n\nconst details = [\n  b.company_name && `Company: ${clean(b.company_name, 200)}`,\n  email && `Email: ${email}`,\n  b.cost_pain_point && `Biggest cost: ${clean(b.cost_pain_point, 200)}`,\n  b.service_area_details && `Notes: ${clean(b.service_area_details, 1000)}`,\n  b.fit_answers && `Fit check: ${clean(JSON.stringify(b.fit_answers), 1000)}`,\n  `SMS consent: ${b.sms_consent === true ? 'yes' : 'no'}`,\n  b.source_page && `Page: ${clean(b.source_page, 200)}`,\n].filter(Boolean).join('\\n');\n\nawait this.helpers.httpRequest({\n  method: 'POST',\n  url: `${SUPABASE_URL}/rest/v1/plumbing_leads`,\n  headers: {\n    apikey: SERVICE_KEY,\n    Authorization: `Bearer ${SERVICE_KEY}`,\n    'Content-Type': 'application/json',\n    Prefer: 'return=minimal',\n  },\n  body: {\n    // call_id is the unique key for phone leads; web leads get their own prefix.\n    call_id: `web-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,\n    sub_account_id: SALES_ACCOUNT_ID,\n    customer_name: name,\n    customer_phone: phone,\n    customer_address: '',\n    plumbing_issue: `Website demo request\\n${details}`,\n    emergency_level: 'standard',\n    pipeline_stage: 'new_lead',\n    transcript: null,\n  },\n  json: true,\n});\n\nreturn [{ json: { ok: true } }];\n"
+      },
+      "name": "Validate + Insert Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Website Form Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate + Insert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}
